@@ -1,36 +1,17 @@
 ---
-title: "Activity 11: Statistical reasoning 3: multiple regression and DAGs"
-subtitle: Feb. 11th, 2026, Calvin Munson
-format: gfm
-execute:
-  warning: false
-editor: source
+title: "StatisticalReasoning3"
+author: "HannahHayes&AndresTigreros"
+format: pdf
+editor: visual
 ---
-
-Welcome! This is the third statistical reasoning activity. The goals of this activity are to understand how to implement DAGs in the context of multiple regression. Specifically, you will:
-
-1.  Build and interpret the relationships in DAGs
-2.  Use prior predictive simulation to adjust priors
-3.  Apply your undertanding of DAG structure to a multiple regression problem
-
-------------------------------------------------------------------------
-
-You will submit one output for this activity:
-
-1.  A **PDF** of a rendered Quarto document with all of your R code. Please create a new Quarto document (e.g. don't use this `README.qmd`) and include all of the code that appears in this document, your own code, and **answers to all of the questions** in the "Q#" sections. Submit this PDF through Gradescope.
-
-A reminder: **Please label the code** in your final submission in two ways:
-
-1.  denote your answers to each question using headers that correspond to the question you're answering, and
-2.  thoroughly "comment" your code: remember, this means annotating your code directly by typing descriptions of what each line does after a `#`. This will help future you!
-
-------------------------------------------------------------------------
 
 Let's start by reading in the relevant packages
 
-```{r}
+```{r eval=FALSE}
 library(brms) # for statistics
 library(tidyverse) # for data wrangling
+library(rethinking)
+library(dagitty)
 
 # a function to scale and center. from rethinking package
 standardize <- function(x) {
@@ -54,6 +35,27 @@ Now recreate the DAG above on [dagitty.net](https://dagitty.net). Leave the wind
 
 Please paste either your DAG image from the website or the DAG model code here.
 
+ANSWER:
+
+```{r}
+drawdag('dag {
+  A [adjusted,pos="-0.423,-1.288"]
+  B [adjusted,pos="-0.423,-0.713"]
+  C [adjusted,pos="0.083,-0.962"]
+  U [adjusted,pos="-0.942,-0.962"]
+  X [adjusted,pos="-0.939,-0.103"]
+  Y [adjusted,pos="0.112,-0.095"]
+  A -> C
+  A -> U
+  C -> B
+  C -> Y
+  U -> B
+  U -> X
+  X -> Y
+}')
+
+```
+
 ------------------------------------------------------------------------
 
 There are four fundamental relations in a DAG: the fork, the pipe, the collider, and the descendent. This image shows them:
@@ -64,11 +66,25 @@ There are four fundamental relations in a DAG: the fork, the pipe, the collider,
 
 Which forks do you see in the DAG you made on dagitty.net? Please write them out in a Quarto list (look up how to write a list if you don't remember!) in the form L ← M → N.
 
+ANSWER: Forks are
+
+U \<- A -\> C
+
+X \<- U -\> B
+
+B \<- C -\> Y
+
 ------------------------------------------------------------------------
 
 ### Q1.3 Identify colliders
 
 Which colliders do you see? Please write them out in a Quarto list in the form L → M ← N. Hint: there is more than one!
+
+ANSWER: Colliders are
+
+U -\> B \<- C
+
+X -\> Y \<- C
 
 ------------------------------------------------------------------------
 
@@ -76,11 +92,44 @@ Which colliders do you see? Please write them out in a Quarto list in the form L
 
 Now modify the DAG (it should still be open on dagitty.net) to include the variable V, an unobserved cause of C and Y: C ← V → Y. Please paste either your DAG image from the website or the DAG model code here.
 
+```{r}
+drawdag('dag {
+A [adjusted,pos="-0.423,-1.288"]
+B [adjusted,pos="-0.423,-0.713"]
+C [adjusted,pos="0.083,-0.962"]
+U [adjusted,pos="-0.942,-0.962"]
+V [adjusted,pos="0.410,-0.571"]
+X [adjusted,pos="-0.939,-0.103"]
+Y [adjusted,pos="0.112,-0.095"]
+A -> C
+A -> U
+C -> B
+C -> Y
+U -> B
+U -> X
+V -> C
+V -> Y
+X -> Y
+}')
+```
+
 ------------------------------------------------------------------------
 
 ### Q1.5 Identify paths
 
 Reanalyze this new DAG. How many paths connect X to Y? Please list them in a Quarto list here:
+
+ANSWER: We identified 5 different paths
+
+X -\> Y
+
+X \<- U -\> B \<- C -\> Y
+
+X \<- U -\> B \<- C \<- V \<- Y
+
+X \<- U \<- A -\> C -\> Y
+
+X \<- U \<- A -\> C \<- V -\> Y
 
 ------------------------------------------------------------------------
 
@@ -88,42 +137,62 @@ Reanalyze this new DAG. How many paths connect X to Y? Please list them in a Qua
 
 Which paths must be closed to estimate the direct effect of X on Y? List the paths
 
+ANWER: The open backdoor paths is one. This because there are 4 backdoor path between X and Y that, but just one do not hit with a collider and this is the one that must be closed.
+
+X \<- U \<- A -\> C -\> Y
+
 ------------------------------------------------------------------------
 
 ### Q1.7 Identify variables to close the backdoor(s)
 
 Given what you just wrote about paths to close, which variables should you condition on to estimate the direct effect of X on Y in your new DAG?
 
+ANSWER: We have three closed backdoors. This because the other three paths hit with a collider at some point
+
+X \<- U -\> B \<- C -\> Y
+
+X \<- U -\> B \<- C \<- V \<- Y
+
+X \<- U \<- A -\> C \<- V -\> Y
+
+So, in order to estimate the effect, me wust condition on U or A. When we condition, we create a correlation between the ones that collide with that variable.
+
 ------------------------------------------------------------------------
 
 # 2. Foxes: Regression practice informed by DAGs
 
-![urban fox, pestuk.com](urbanfox.jpg)
-
 For this section, we are going to implement what we learned about DAGs into an example about urban fox territories from the `rethinking` package. Let's load in the data:
 
 ```{r}
-# Load in the fox data
+# Load in the fox data 
 foxes <- read.csv('https://raw.githubusercontent.com/rmcelreath/rethinking/refs/heads/master/data/foxes.csv', sep = ';')
 ```
 
 ```{r}
-# Check out the fox data
-?foxes
+# Check out the fox data 
+?foxes 
 head(foxes)
 ```
 
 From the Rethinking textbook: "The data in data(foxes) are 116 foxes from 30 different urban groups in England. These foxes are like street gangs. `Group size` varies from 2 to 8 individuals. Each group maintains its own urban territory. Some territories are larger than others. The `area` variable encodes this information. Some territories also have more `avgfood` than others. We want to model the `weight` of each fox \[in kg\]." For the questions below, we will assume the following DAG is appropriate for this system:
 
-![fox DAG](foxDAG.jpg)
+![fox DAG](foxDAG.jpg){alt="fox DAG"}
 
 ------------------------------------------------------------------------
 
-![elemental confounds](elemental_confounds.jpg)
+![elemental confounds](elemental_confounds.jpg){alt="elemental confounds"}
 
 ### Q2.1 Identify the fundamental relations in the fox DAG
 
 Which of the first three fundamental relations above (Fork, Pipe, and Collider) do you see in the Fox DAG? List the names of the relations you see AND the particular paths (e.g. "Pipe1: X-\>Z-\>Y, Pipe2: X-\>Z-\>C and Fork1: X\<-Z-\>Y")
+
+ANSWER:
+
+-   Forks: weight \<- avfood -\> grpsize
+
+-   Pipes: area -\> avgfood -\> weight ; area -\> grpsize -\>weight
+
+-   Colliders: avgfood -\> weight \<- grpsize
 
 ------------------------------------------------------------------------
 
@@ -142,6 +211,7 @@ fox_dat <- foxes %>%
   as_tibble() %>%
   select(area, avgfood, weight, groupsize) %>%
   mutate(across(everything(), standardize))
+head(fox_dat)
 ```
 
 Simulate from some priors for a linear regression with intercept *alpha* and slope *beta*: *alpha* \~ Gaussian(0, 0.2), *beta* \~ Gaussian(0, 2)
@@ -162,7 +232,6 @@ Make a plot of what these priors imply.
 ggplot(priorsims, aes(x = area, y = weight, group = group)) +
   geom_line(alpha = 1 / 10) +
   labs(x = "Standardized Area", y = "Standardized Weight")
-
 ```
 
 It's pretty hard to understand what a "reasonable" fox weight is when it is in standardized units. Let's logic our way through this slowly.
@@ -173,11 +242,19 @@ It's pretty hard to understand what a "reasonable" fox weight is when it is in s
 
 What to you seems like a reasonable minimum weight for a fox, in kg?
 
+```{r}
+min(foxes$weight)
+```
+
 ------------------------------------------------------------------------
 
 ### Q2.3 Maximum fox weight
 
 What to you seems like a reasonable minimum weight for a fox, in kg?
+
+```{r}
+max(foxes$weight)
+```
 
 ------------------------------------------------------------------------
 
@@ -185,11 +262,35 @@ What to you seems like a reasonable minimum weight for a fox, in kg?
 
 Remake your prior predictive simulation plot and add two horizontal lines, one each for the minimum and maximum weights that you just provided. Before plotting, make sure to *standardize* your values in kg so that they are plotted as centered values in units of standard deviation (i.e., subtract the mean and divide by the standard deviation of foxes\$weight).
 
+```{r}
+##Defining the max and min
+raw_min <- 1.92
+raw_max <- 7.55
+
+##Calculating the standardized versions
+##We subtract the mean and divide by the standard deviation of foxes$weight
+std_min <- (raw_min - mean(foxes$weight)) / sd(foxes$weight)
+std_max <- (raw_max - mean(foxes$weight)) / sd(foxes$weight)
+
+
+##Plotting now
+
+ggplot(priorsims, aes(x = area, y = weight, group = group)) +
+  geom_line(alpha = 1 / 10) +
+  labs(x = "Standardized Area", y = "Standardized Weight") +
+  geom_hline(yintercept = std_min, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = std_max, linetype = "dashed", color = "red") +
+  labs(x = "Standardized Area", y = "Standardized weight") +
+  theme_classic()
+```
+
 ------------------------------------------------------------------------
 
 ### Q2.5 Evaluate prior predictive simulation
 
 Do your priors seem reasonable? You haven't seen any data yet, though you have marked out the minimum and maximum weights you expect foxes to be. Do your priors greatly exceed those values? Please explain your thinking.
+
+ANSWER: It seems like the priors are not really informative because they are far away deviated from the a realistic weight in foxes which are depicted by the red lines in the last graph.
 
 ------------------------------------------------------------------------
 
@@ -197,13 +298,31 @@ Do your priors seem reasonable? You haven't seen any data yet, though you have m
 
 Remake and plot a set of prior simulations that use priors you think are reasonable (adjusting the code from above would work well for this). Be sure to include the minimum and maximum fox weights that you expect. You can iterate on this a few times (simulate, plot, adjust, etc.) until you arrive at priors that make sense to you.
 
-------------------------------------------------------------------------
+```{r}
+n <- 1000
+
+## tightening the beta from 2.0 to 0.5 so the slope is not that pronounced. 2 was to wide so it showed a lot of really fat foxes
+priorsims_refined <- tibble(group = seq_len(n),
+                    alpha = rnorm(n, 0, 0.2), 
+                    beta = rnorm(n, 0, 0.5)) %>% 
+  expand(nesting(group, alpha, beta), 
+         area = seq(from = -2, to = 2, length.out = 100)) %>% 
+  mutate(weight = alpha + beta * area)
+
+# Plot it again and see if this change worked hehe
+ggplot(priorsims_refined, aes(x = area, y = weight, group = group)) +
+  geom_line(alpha = 1 / 10) +
+  geom_hline(yintercept = std_min, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = std_max, linetype = "dashed", color = "red") +
+  labs(x = "Standardized Area", y = "Standardized weight") +
+  theme_classic()
+```
 
 ## Run models
 
 Run a model predicting average food as a function of area. Modify the code for the priors below to match the priors you just chose.
 
-```{r}
+```{r eval=FALSE}
 food_on_area <- brm(avgfood ~ 1 + area, 
                     data = fox_dat, 
                     family = gaussian,
@@ -215,7 +334,7 @@ food_on_area <- brm(avgfood ~ 1 + area,
                     file = "output/food_on_area")
 ```
 
-Check out the summary:
+Checking the summary
 
 ```{r}
 summary(food_on_area)
@@ -231,11 +350,31 @@ We find that for an increase of 1 standard deviation in area, we expect to see a
 
 Now infer the total impact of adding food to a territory. Run a model with `weight` as a function of `avgfood`. Based on your results, does more food make foxes heavier? In your opinion, is this expected or unexpected? Please explain in two (2) or more sentences.
 
+```{r eval=FALSE}
+food_on_weight <- brm(weight ~ 1 + avgfood, 
+                    data = fox_dat, 
+                    family = gaussian,
+                    # Here we set the priors that we investigated earlier
+                    prior = c(prior(normal(0, 0.2), class = Intercept),
+                              prior(normal(0, 2), class = b,),
+                              prior(exponential(1), class = sigma)),
+                    iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
+                    file = "output/food_on_weight")
+```
+
+```{r}
+summary(food_on_weight)
+```
+
+ANSWER: The model ran correctly because our Rhat's are perfectly on a vlue of 1.00. Here in this we didn't find the existence of an effect of avgfood in the weight of foxes. This due to the lower and upper CI went acroos zero. This is quite unexpected for us because you'd normally assumed that the amound of food will impact the weight of animals.
+
 ------------------------------------------------------------------------
 
 ### Q2.8 Is there a variable we should condition upon?
 
 We just estimated the total impact of `avgfood` on `weight`, which includes both direct and indirect paths. Think back to your DAG elemental confounds. If we want to estimate only the direct impact of `avgfood` on `weight`, which variable should we condition upon?
+
+ANSWER: We think that we must condition on groupsize becase avgfood also impact this variable following our DAG. So, groupsize also has an influence in the weight of foxes
 
 ------------------------------------------------------------------------
 
@@ -251,77 +390,6 @@ First, let's look at the separate effect of `groupsize` in a univariate regressi
 
 Before running the model, how do you think the number of foxes in a group `groupsize` would affect fox weight? Why?
 
-ANSWER: We consider that groupsize will have an effect in weight of foxes. This because, the bigger the group size, there will be less food for each member of the group and more competition for this resource. Which in the long term will decrease the mean weight of all the members.
-
 ------------------------------------------------------------------------
 
 Now let's run the model:
-
-```{r}
-group_on_weight <- brm(weight ~ 1 + groupsize, 
-                       data = fox_dat, 
-                       family = gaussian,
-                       prior = c(prior(normal(0, 0.2), class = Intercept),
-                                 prior(normal(0, 0.5), class = b,),
-                                 prior(exponential(1), class = sigma)),
-                       iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
-                       file = "output/group_on_weight")
-```
-
-```{r}
-summary(group_on_weight)
-```
-
-Similar to the total effect of `avgfood` on `weight` in a univariate regression, we see no effect; the estimate for the slope of `groupsize` on `weight` is -0.16, but the 95% CI are between -0.33 and 0.02, which includes 0. This suggests the effect of `groupsize` on `weight` could very well be zero, *given this model*.
-
-To estimate the **direct effect** of `avgfood` on `weight`, we need to block the indirect path through `groupsize`. To do that, we include `groupsize` in a multiple regression (along with our main interest, `avgfood`). (By coincidence, this will also give us the direct effect of `groupsize` on `weight`. Look hard at the DAG and ask Calvin or Malin if the reasoning here isn't clear).
-
-Let's add in `groupsize` to block the pipe `weight`-\>`groupsize`-\>`avgfood`:
-
-```{r}
-food_direct <- brm(weight ~ 1 + avgfood + groupsize, 
-                   data = fox_dat,
-                   family = gaussian,
-                   prior = c(prior(normal(0, 0.2), class = Intercept),
-                             prior(normal(0, 0.5), class = b,),
-                             prior(exponential(1), class = sigma)),
-                   iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
-                   file = "output/food_direct")
-
-summary(food_direct)
-```
-
-------------------------------------------------------------------------
-
-### Interpret the multiple regression output
-
-------------------------------------------------------------------------
-
-#### Q2.10a
-
-What are the effects of `avgfood` and `groupsize` now that you have accounted for both variables?
-
-------------------------------------------------------------------------
-
-#### Q2.10b
-
-How does this interpretation change your interpretation from the univariate regressions of each variable separately with `weight`?
-
-------------------------------------------------------------------------
-
-#### Q2.10c
-
-Provide a small discussion (2-4 sentences) explaining in your own words why these results turned out the way they did, in the context of the ecological system of fox territories. Include why you think that the univariate regressions may have suggested no relationship while the multiple regression suggests a different answer.
-
-------------------------------------------------------------------------
-
-### Render to PDF
-
-When you have finished, remember to pull, stage, commit, and push with GitHub:
-
--   Pull to check for updates to the remote branch
--   Stage your edits (after saving your document!) by checking the documents you'd like to push
--   Commit your changes with a commit message
--   Push your changes to the remote branch
-
-Then submit the well-labeled PDF on Gradescope. Thanks!
