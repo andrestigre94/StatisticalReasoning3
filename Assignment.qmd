@@ -176,11 +176,11 @@ head(foxes)
 
 From the Rethinking textbook: "The data in data(foxes) are 116 foxes from 30 different urban groups in England. These foxes are like street gangs. `Group size` varies from 2 to 8 individuals. Each group maintains its own urban territory. Some territories are larger than others. The `area` variable encodes this information. Some territories also have more `avgfood` than others. We want to model the `weight` of each fox \[in kg\]." For the questions below, we will assume the following DAG is appropriate for this system:
 
-![fox DAG](foxDAG.jpg){alt="fox DAG"}
+![fox DAG](foxDAG.jpg)
 
 ------------------------------------------------------------------------
 
-![elemental confounds](elemental_confounds.jpg){alt="elemental confounds"}
+![elemental confounds](elemental_confounds.jpg)
 
 ### Q2.1 Identify the fundamental relations in the fox DAG
 
@@ -351,7 +351,7 @@ We find that for an increase of 1 standard deviation in area, we expect to see a
 Now infer the total impact of adding food to a territory. Run a model with `weight` as a function of `avgfood`. Based on your results, does more food make foxes heavier? In your opinion, is this expected or unexpected? Please explain in two (2) or more sentences.
 
 ```{r eval=FALSE}
-food_on_weight <- brm(weight ~ 1 + avgfood, 
+weight_on_food <- brm(weight ~ 1 + avgfood, 
                     data = fox_dat, 
                     family = gaussian,
                     # Here we set the priors that we investigated earlier
@@ -359,11 +359,11 @@ food_on_weight <- brm(weight ~ 1 + avgfood,
                               prior(normal(0, 2), class = b,),
                               prior(exponential(1), class = sigma)),
                     iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
-                    file = "output/food_on_weight")
+                    file = "output/weight_on_food")
 ```
 
 ```{r}
-summary(food_on_weight)
+summary(weight_on_food)
 ```
 
 ANSWER: The model ran correctly because our Rhat's are perfectly on a vlue of 1.00. Here in this we didn't find the existence of an effect of avgfood in the weight of foxes. This due to the lower and upper CI went acroos zero. This is quite unexpected for us because you'd normally assumed that the amound of food will impact the weight of animals.
@@ -390,6 +390,68 @@ First, let's look at the separate effect of `groupsize` in a univariate regressi
 
 Before running the model, how do you think the number of foxes in a group `groupsize` would affect fox weight? Why?
 
+ANSWER: We consider that groupsize will have an effect in weight of foxes. This because, the bigger the group size, there will be less food for each member of the group and more competition for this resource. Which in the long term will decrease the mean weight of all the members.
+
 ------------------------------------------------------------------------
 
 Now let's run the model:
+
+```{r eval=FALSE}
+group_on_weight <- brm(weight ~ 1 + groupsize, 
+                       data = fox_dat, 
+                       family = gaussian,
+                       prior = c(prior(normal(0, 0.2), class = Intercept),
+                                 prior(normal(0, 0.5), class = b,),
+                                 prior(exponential(1), class = sigma)),
+                       iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
+                       file = "output/group_on_weight")
+```
+
+```{r}
+summary(group_on_weight)
+```
+
+Similar to the total effect of `avgfood` on `weight` in a univariate regression, we see no effect; the estimate for the slope of `groupsize` on `weight` is -0.16, but the 95% CI are between -0.33 and 0.02, which includes 0. This suggests the effect of `groupsize` on `weight` could very well be zero, *given this model*.
+
+To estimate the **direct effect** of `avgfood` on `weight`, we need to block the indirect path through `groupsize`. To do that, we include `groupsize` in a multiple regression (along with our main interest, `avgfood`). (By coincidence, this will also give us the direct effect of `groupsize` on `weight`. Look hard at the DAG and ask Calvin or Malin if the reasoning here isn't clear).
+
+Let's add in `groupsize` to block the pipe `weight`-\>`groupsize`-\>`avgfood`:
+
+```{r eval=FALSE}
+food_direct <- brm(weight ~ 1 + avgfood + groupsize, 
+                   data = fox_dat,
+                   family = gaussian,
+                   prior = c(prior(normal(0, 0.2), class = Intercept),
+                             prior(normal(0, 0.5), class = b,),
+                             prior(exponential(1), class = sigma)),
+                   iter = 4000, warmup = 2000, chains = 4, cores = 4, seed = 1234,
+                   file = "output/food_direct")
+
+summary(food_direct)
+```
+
+### Interpret the multiple regression output
+
+------------------------------------------------------------------------
+
+#### Q2.10a
+
+What are the effects of `avgfood` and `groupsize` now that you have accounted for both variables?
+
+ANSWER:
+
+------------------------------------------------------------------------
+
+#### Q2.10b
+
+How does this interpretation change your interpretation from the univariate regressions of each variable separately with `weight`?
+
+ANSWER:
+
+------------------------------------------------------------------------
+
+#### Q2.10c
+
+Provide a small discussion (2-4 sentences) explaining in your own words why these results turned out the way they did, in the context of the ecological system of fox territories. Include why you think that the univariate regressions may have suggested no relationship while the multiple regression suggests a different answer.
+
+ANSWER:

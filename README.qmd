@@ -251,8 +251,6 @@ First, let's look at the separate effect of `groupsize` in a univariate regressi
 
 Before running the model, how do you think the number of foxes in a group `groupsize` would affect fox weight? Why?
 
-ANSWER: We consider that groupsize will have an effect in weight of foxes. This because, the bigger the group size, there will be less food for each member of the group and more competition for this resource. Which in the long term will decrease the mean weight of all the members.
-
 ------------------------------------------------------------------------
 
 Now let's run the model:
